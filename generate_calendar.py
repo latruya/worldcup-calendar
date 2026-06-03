@@ -1,65 +1,53 @@
 import os
 import requests
-from icalendar import Calendar, Event
 from datetime import datetime, timedelta
-import pytz
-
-API_TOKEN = os.environ.get('FOOTBALL_DATA_TOKEN', '')
-API_URL = "https://api.football-data.org/v4/matches"
 
 def fetch_fixtures():
-    headers = {'X-Auth-Token': API_TOKEN}
-    # We are using 'PL' (Premier League) here so you can test it with real data immediately!
-    # Change 'PL' back to 'WC' when the World Cup 2026 schedule is released.
-    params = {'competitions': 'PL'} 
-    
-    if not API_TOKEN:
+    token = os.environ.get('FOOTBALL_DATA_TOKEN')
+    if not token:
         print("Error: API Token not found. Did you add it to GitHub Secrets?")
         return []
-
-    response = requests.get(API_URL, headers=headers, params=params)
-    if response.status_code == 200:
+    
+    headers = {
+        'X-Auth-Token': token
+    }
+    try:
+        # This is the corrected URL that fetches ALL tournament matches at once
+        url = 'https://api.football-data.org/v4/competitions/WC/matches'
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
         return response.json().get('matches', [])
-    else:
-        print(f"Error fetching data: {response.status_code} - {response.text}")
-    return []
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data: {e}")
+        return []
 
 def generate_ics(matches):
-    cal = Calendar()
-    cal.add('prodid', '-//World Cup Calendar Generator//mxm.dk//')
-    cal.add('version', '2.0')
-    cal.add('calscale', 'GREGORIAN')
-    cal.add('method', 'PUBLISH')
-    cal.add('x-wr-calname', 'Football Calendar')
-    cal.add('x-wr-timezone', 'UTC')
-
+    ics_data = "BEGIN:VCALENDAR\n"
+    ics_data += "VERSION:2.0\n"
+    ics_data += "PRODID:-//World Cup 2026 Calendar Generator//mxm.dk//\n"
+    ics_data += "CALSCALE:GREGORIAN\n"
+    ics_data += "METHOD:PUBLISH\n"
+    ics_data += "X-WR-CALNAME:World Cup 2026\n"
+    ics_data += "X-WR-TIMEZONE:UTC\n"
+    
     for match in matches:
-        # Get start and end times (assuming match lasts ~2 hours)
-        start_time = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
-        end_time = start_time + timedelta(hours=2)
-
-        event = Event()
-        home_team = match['homeTeam']['name']
-        away_team = match['awayTeam']['name']
-        status = match['status']
+        home_team = match.get('homeTeam', {}).get('name', 'TBD')
+        away_team = match.get('awayTeam', {}).get('name', 'TBD')
+        date_str = match.get('utcDate')
         
-        event.add('summary', f"{home_team} vs {away_team}")
-        event.add('dtstart', start_time)
-        event.add('dtend', end_time)
-        event.add('dtstamp', datetime.now(pytz.utc))
-        event.add('uid', f"match-{match['id']}@football-calendar.local")
-        
-        # Add scores to description if the match is finished or live
-        description = f"Status: {status}\n"
-        if status in ['FINISHED', 'IN_PLAY', 'PAUSED']:
-            score_home = match['score']['fullTime']['home']
-            score_away = match['score']['fullTime']['away']
-            description += f"Score: {home_team} {score_home} - {score_away} {away_team}\n"
+        if date_str:
+            match_date = datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%SZ')
+            end_date = match_date + timedelta(hours=2)
             
-        event.add('description', description)
-        cal.add_component(event)
-
-    return cal.to_ical()
+            ics_data += "BEGIN:VEVENT\n"
+            ics_data += f"SUMMARY:{home_team} vs {away_team}\n"
+            ics_data += f"DTSTART:{match_date.strftime('%Y%m%dT%H%M%SZ')}\n"
+            ics_data += f"DTEND:{end_date.strftime('%Y%m%dT%H%M%SZ')}\n"
+            ics_data += f"DESCRIPTION:Matchday {match.get('matchday', 'N/A')} - {match.get('stage', 'N/A')}\n"
+            ics_data += "END:VEVENT\n"
+            
+    ics_data += "END:VCALENDAR\n"
+    return ics_data.encode('utf-8')
 
 if __name__ == "__main__":
     print("Fetching fixtures...")
