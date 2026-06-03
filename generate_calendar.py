@@ -1,6 +1,7 @@
 import os
 import requests
-from datetime import datetime, timedelta
+import uuid
+from datetime import datetime, timedelta, timezone
 
 def fetch_fixtures():
     token = os.environ.get('FOOTBALL_DATA_TOKEN')
@@ -12,7 +13,6 @@ def fetch_fixtures():
         'X-Auth-Token': token
     }
     try:
-        # This is the corrected URL that fetches ALL tournament matches at once
         url = 'https://api.football-data.org/v4/competitions/WC/matches'
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -30,16 +30,24 @@ def generate_ics(matches):
     ics_data += "X-WR-CALNAME:World Cup 2026\n"
     ics_data += "X-WR-TIMEZONE:UTC\n"
     
+    # Generate the current time for the mandatory DTSTAMP field
+    now = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    
     for match in matches:
         home_team = match.get('homeTeam', {}).get('name', 'TBD')
         away_team = match.get('awayTeam', {}).get('name', 'TBD')
         date_str = match.get('utcDate')
+        
+        # Use the API's match ID, or generate a random one if it doesn't exist
+        match_id = match.get('id', uuid.uuid4())
         
         if date_str:
             match_date = datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%SZ')
             end_date = match_date + timedelta(hours=2)
             
             ics_data += "BEGIN:VEVENT\n"
+            ics_data += f"UID:match-{match_id}@worldcup2026.com\n"
+            ics_data += f"DTSTAMP:{now}\n"
             ics_data += f"SUMMARY:{home_team} vs {away_team}\n"
             ics_data += f"DTSTART:{match_date.strftime('%Y%m%dT%H%M%SZ')}\n"
             ics_data += f"DTEND:{end_date.strftime('%Y%m%dT%H%M%SZ')}\n"
