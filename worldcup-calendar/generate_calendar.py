@@ -6,19 +6,22 @@ import pytz
 
 # football-data.org constants
 API_TOKEN = os.environ.get('FOOTBALL_DATA_TOKEN', '')
-API_URL = "https://api.football-data.org/v4/competitions/WC/matches"
+API_URL = "https://api.football-data.org/v4/matches"
 
 def fetch_fixtures():
     """Fetch all fixtures for the World Cup."""
     headers = {
         'X-Auth-Token': API_TOKEN
     }
+    params = {
+        'competitions': 'WC'
+    }
     
     if not API_TOKEN:
         print("Warning: FOOTBALL_DATA_TOKEN not set. Cannot fetch live data.")
         return []
 
-    response = requests.get(API_URL, headers=headers)
+    response = requests.get(API_URL, headers=headers, params=params)
     
     if response.status_code == 200:
         data = response.json()
